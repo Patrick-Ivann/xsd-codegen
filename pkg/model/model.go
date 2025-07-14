@@ -42,33 +42,44 @@ package model
 type Schema struct {
 	Types    []XSDType    // List of complex/simple types
 	Elements []XSDElement // Top-level elements
+	Includes []Directive  // <xs:include> directives
+	Imports  []Directive  // <xs:import> directives
 }
 
 // XSDType represents a complex or simple type in the schema.
 type XSDType struct {
-	Name       string         // Name of the type
-	Fields     []XSDField     // Fields for complex types
-	Attributes []XSDAttribute // Attributes for the type
+	Name          string         // Name of the type
+	Fields        []XSDField     // Fields for complex types
+	Attributes    []XSDAttribute // Attributes for the type
+	Documentation string         // Type-level comment from <annotation><documentation>
 }
 
 // XSDField represents a field (element) within a complex type.
 type XSDField struct {
-	Name        string       // Field name
-	Type        string       // Field type (XSD or Go type)
-	MinOccurs   int          // Minimum occurrences
-	MaxOccurs   int          // Maximum occurrences
-	Restriction *Restriction // Add this field
+	Name          string       // Field name
+	Type          string       // Field type (XSD or Go type) XSD type string (e.g., xs:string)
+	MinOccurs     int          // Minimum occurrences
+	MaxOccurs     int          // Maximum occurrences
+	Restriction   *Restriction // Optional restrictions for the field
+	Documentation string       // Optional documentation from <annotation><documentation>
 }
 
 // XSDElement represents a top-level element in the schema.
 type XSDElement struct {
-	Name        string // Element name
-	Type        string // Element type
-	Restriction *Restriction
+	Name          string       // Element name
+	Type          string       // Element type
+	Restriction   *Restriction // Optional inline simpleType restrictions
+	Documentation string       // Optional documentation from <annotation><documentation>
 }
 
-// XSDAttribute represents an attribute in a type.
+// XSDAttribute represents an <xs:attribute> inside a complexType.
 type XSDAttribute struct {
 	Name string // Attribute name
-	Type string // Attribute type
+	Type string // Attribute type (e.g., xs:string)
+}
+
+// Directive models an <xs:import> or <xs:include>.
+type Directive struct {
+	SchemaLocation string // Path to external schema file
+	Namespace      string // Optional target namespace
 }
