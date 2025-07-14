@@ -11,6 +11,7 @@ import (
 )
 
 // ParseXSD parses an XSD file and returns a Schema model, handling all restrictions.
+// including inline complex/simple types, attributes, and restrictions.
 func ParseXSD(path string) (*model.Schema, error) {
 	file, err := os.Open(path)
 	if err != nil {
@@ -27,34 +28,17 @@ func ParseXSD(path string) (*model.Schema, error) {
 	var inSimpleType bool
 
 	for {
-		t, err := decoder.Token()
+		token, err := decoder.Token()
 		if err == io.EOF {
 			break
 		}
 		if err != nil {
 			return nil, fmt.Errorf("XML decode error: %w", err)
 		}
-		switch se := t.(type) {
+
+		switch se := token.(type) {
 		case xml.StartElement:
 			switch se.Name.Local {
-			case "complexType":
-				currType = &model.XSDType{}
-				for _, attr := range se.Attr {
-					if attr.Name.Local == "name" {
-						currType.Name = attr.Value
-					}
-				}
-			case "simpleType":
-				if currField != nil || currElem != nil {
-					inSimpleType = true
-				} else {
-					currType = &model.XSDType{}
-					for _, attr := range se.Attr {
-						if attr.Name.Local == "name" {
-							currType.Name = attr.Value
-						}
-					}
-				}
 			case "element":
 				field := model.XSDField{}
 				elem := model.XSDElement{}
@@ -74,6 +58,33 @@ func ParseXSD(path string) (*model.Schema, error) {
 				}
 				currField = &field
 				currElem = &elem
+
+			case "complexType":
+				currType = &model.XSDType{}
+				for _, attr := range se.Attr {
+					if attr.Name.Local == "name" {
+						currType.Name = attr.Value
+					}
+				}
+				if currType.Name == "" && currElem != nil {
+					currType.Name = currElem.Name
+				}
+
+			case "simpleType":
+				if currField != nil || currElem != nil {
+					inSimpleType = true
+				} else {
+					currType = &model.XSDType{}
+					for _, attr := range se.Attr {
+						if attr.Name.Local == "name" {
+							currType.Name = attr.Value
+						}
+					}
+				}
+				if currType != nil && currType.Name == "" && currElem != nil {
+					currType.Name = currElem.Name
+				}
+
 			case "attribute":
 				if currType != nil {
 					attr := model.XSDAttribute{}
@@ -87,6 +98,7 @@ func ParseXSD(path string) (*model.Schema, error) {
 					}
 					currType.Attributes = append(currType.Attributes, attr)
 				}
+
 			case "restriction":
 				if inSimpleType && (currField != nil || currElem != nil) {
 					restriction := parseRestriction(decoder)
@@ -107,8 +119,8 @@ func ParseXSD(path string) (*model.Schema, error) {
 					currType = nil
 				}
 				inSimpleType = false
-			case "element":
 
+			case "element":
 				if currType != nil && currField != nil {
 					currType.Fields = append(currType.Fields, *currField)
 				} else if currElem != nil {
@@ -117,9 +129,9 @@ func ParseXSD(path string) (*model.Schema, error) {
 				currField = nil
 				currElem = nil
 			}
-
 		}
 	}
+
 	return &schema, nil
 }
 

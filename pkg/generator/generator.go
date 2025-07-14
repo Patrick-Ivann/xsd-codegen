@@ -18,6 +18,8 @@ func GenerateGoCode(schema *model.Schema, tmplPath, outputPath string) error {
 	}
 	tmpl, err := template.New("struct").Funcs(template.FuncMap{
 		"restrictionTag": restrictionTag,
+		"goType":         XSDToGoType,
+		"title":          Title,
 	}).Parse(string(tmplBytes))
 	if err != nil {
 		return fmt.Errorf("failed to parse template: %w", err)
