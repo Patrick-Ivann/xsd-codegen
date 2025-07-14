@@ -1,7 +1,6 @@
 package parser
 
 import (
-	"fmt"
 	"os"
 	"testing"
 )
@@ -95,9 +94,6 @@ func TestParseXSD_Attribute(t *testing.T) {
 	}
 	found := false
 	for _, typ := range schema.Types {
-		fmt.Printf("typ: %v\n", typ)
-		fmt.Printf("typ.Name: %v\n", typ.Name)
-		fmt.Printf("typ.Attributes: %v\n", typ.Attributes)
 		if typ.Name == "Book" && len(typ.Attributes) == 1 && typ.Attributes[0].Name == "id" {
 			found = true
 		}

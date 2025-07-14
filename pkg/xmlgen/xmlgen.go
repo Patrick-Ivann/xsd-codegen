@@ -73,7 +73,6 @@ func MarshalDummyXML(rootName string, typ model.XSDType) ([]byte, error) {
 
 // encodeMapToXML recursively encodes a map[string]interface{} as XML tokens.
 func encodeMapToXML(enc *xml.Encoder, m map[string]interface{}, parent string) error {
-	fmt.Printf("parent: %v\n", parent)
 	for k, v := range m {
 		start := xml.StartElement{Name: xml.Name{Local: k}}
 		if err := enc.EncodeToken(start); err != nil {

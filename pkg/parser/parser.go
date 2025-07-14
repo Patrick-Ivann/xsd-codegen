@@ -36,7 +36,6 @@ func ParseXSD(path string) (*model.Schema, error) {
 		}
 		switch se := t.(type) {
 		case xml.StartElement:
-			fmt.Printf("se: %v\n", se)
 			switch se.Name.Local {
 			case "complexType":
 				currType = &model.XSDType{}
@@ -64,8 +63,6 @@ func ParseXSD(path string) (*model.Schema, error) {
 					case "name":
 						field.Name = attr.Value
 						elem.Name = attr.Value
-						fmt.Printf("parser.go field.Name: %v\n", field.Name)
-						fmt.Printf("parser.go elem.Name: %v\n", elem.Name)
 					case "type":
 						field.Type = attr.Value
 						elem.Type = attr.Value
@@ -77,8 +74,6 @@ func ParseXSD(path string) (*model.Schema, error) {
 				}
 				currField = &field
 				currElem = &elem
-				fmt.Printf("parser.go currField: %v\n", currField)
-				fmt.Printf("parser.go currElem: %v\n", currElem)
 			case "attribute":
 				if currType != nil {
 					attr := model.XSDAttribute{}
@@ -103,13 +98,8 @@ func ParseXSD(path string) (*model.Schema, error) {
 					}
 				}
 			}
-			fmt.Printf("parser.go out switch schema: %v\n", schema)
-			fmt.Printf("parser.go se.Name: %v\n", se.Name)
-			fmt.Printf("parser.go se: %v\n", se)
-			fmt.Printf("parser.go startElement currElem: %v\n", currElem)
 
 		case xml.EndElement:
-			fmt.Printf("se.Name.Local: %v\n", se.Name.Local)
 			switch se.Name.Local {
 			case "complexType", "simpleType":
 				if currType != nil {
@@ -118,9 +108,7 @@ func ParseXSD(path string) (*model.Schema, error) {
 				}
 				inSimpleType = false
 			case "element":
-				fmt.Printf("currType: %v\n", currType)
-				fmt.Printf("currType: %v\n", currField)
-				fmt.Printf("currType: %v\n", currElem)
+
 				if currType != nil && currField != nil {
 					currType.Fields = append(currType.Fields, *currField)
 				} else if currElem != nil {
@@ -132,9 +120,6 @@ func ParseXSD(path string) (*model.Schema, error) {
 
 		}
 	}
-	fmt.Printf("parser.go currElem: %v\n", currElem)
-	fmt.Printf("parser.go schema: %v\n", schema)
-	fmt.Printf("Final schema.Elements: %+v\n", schema.Elements)
 	return &schema, nil
 }
 
