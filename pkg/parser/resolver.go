@@ -23,14 +23,25 @@ func ResolveImportsAndIncludes(schema *model.Schema, basePath string) error {
 
 // resolveImportsAndIncludes is the internal recursive resolver using a local cache.
 func resolveImportsAndIncludes(schema *model.Schema, basePath string, cache schemaCacheType) error {
-	// Open the XSD file for parsing.
+	// basePath must be a file. Get its directory for resolving relative includes/imports.
+	baseDir := filepath.Dir(basePath)
+
+	// Defensive: check basePath is a file, not a directory.
+	info, err := os.Stat(basePath)
+	if err != nil {
+		return fmt.Errorf("failed to stat XSD file: %w", err)
+	}
+	if info.IsDir() {
+		return fmt.Errorf("basePath is a directory, not a file: %s", basePath)
+	}
+
 	file, err := os.Open(basePath)
 	if err != nil {
 		return fmt.Errorf("failed to open XSD file: %w", err)
 	}
 	defer file.Close()
-
 	decoder := xml.NewDecoder(file)
+
 	for {
 		token, err := decoder.Token()
 		if err == io.EOF {
@@ -53,14 +64,22 @@ func resolveImportsAndIncludes(schema *model.Schema, basePath string, cache sche
 				if schemaLocation == "" {
 					continue
 				}
-				// Resolve the referenced schema path.
+				// Resolve the referenced schema path relative to the base directory.
 				refPath := schemaLocation
 				if !filepath.IsAbs(schemaLocation) {
-					refPath = filepath.Join(filepath.Dir(basePath), schemaLocation)
+					refPath = filepath.Join(baseDir, schemaLocation)
 				}
 				absRefPath, err := filepath.Abs(refPath)
 				if err != nil {
 					return fmt.Errorf("failed to resolve schema path: %w", err)
+				}
+				// Defensive: check that absRefPath is a file, not a directory.
+				info, err := os.Stat(absRefPath)
+				if err != nil {
+					return fmt.Errorf("failed to stat schema path: %w", err)
+				}
+				if info.IsDir() {
+					return fmt.Errorf("schemaLocation points to a directory, not a file: %s", absRefPath)
 				}
 				// Avoid duplicate parsing.
 				if cachedSchema, ok := cache[absRefPath]; ok {
