@@ -204,3 +204,32 @@ func TestParseXSD_ElementInlineSimpleTypeRestriction(t *testing.T) {
 	}
 
 }
+
+func TestParseXSD_ElementDocumentation(t *testing.T) {
+	xsd := `<?xml version="1.0"?>
+    <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+      <xs:element name="Code">
+        <xs:annotation><xs:documentation>this is a code element</xs:documentation></xs:annotation>
+        <xs:simpleType>
+          <xs:restriction base="xs:string">
+            <xs:pattern value="[A-Z]{3}"/>
+          </xs:restriction>
+        </xs:simpleType>
+      </xs:element>
+    </xs:schema>`
+	path := "test_element_doc.xsd"
+	os.WriteFile(path, []byte(xsd), 0644)
+	defer os.Remove(path)
+
+	schema, err := ParseXSD(path)
+	if err != nil {
+		t.Fatalf("ParseXSD failed: %v", err)
+	}
+	if len(schema.Elements) != 1 {
+		t.Fatalf("Expected 1 element, got %d", len(schema.Elements))
+	}
+	elem := schema.Elements[0]
+	if elem.Documentation != "this is a code element" {
+		t.Fatalf("Expected documentation, got: '%s'", elem.Documentation)
+	}
+}
