@@ -26,11 +26,14 @@ func ParseXSD(path string) (*model.Schema, error) {
 	var currType *model.XSDType
 	var currField *model.XSDField
 	var currElem *model.XSDElement
+	var currAttr *model.XSDAttribute
 	var inSimpleType bool
 
 	var inAnnotation bool
 	var inDocumentation bool
 	var docBuffer strings.Builder
+
+	var elementStack []string
 
 	for {
 		token, err := decoder.Token()
@@ -41,59 +44,71 @@ func ParseXSD(path string) (*model.Schema, error) {
 			return nil, fmt.Errorf("XML decode error: %w", err)
 		}
 
-		switch se := token.(type) {
+		switch tok := token.(type) {
 		case xml.StartElement:
-			switch se.Name.Local {
+			elementStack = append(elementStack, tok.Name.Local)
+
+			switch tok.Name.Local {
 			case "element":
-				field := model.XSDField{}
-				elem := model.XSDElement{}
-				for _, attr := range se.Attr {
-					switch attr.Name.Local {
-					case "name":
-						field.Name = attr.Value
-						elem.Name = attr.Value
-					case "type":
-						field.Type = attr.Value
-						elem.Type = attr.Value
-					case "minOccurs":
-						field.MinOccurs, _ = strconv.Atoi(attr.Value)
-					case "maxOccurs":
-						field.MaxOccurs, _ = strconv.Atoi(attr.Value)
+				isInsideType := currType != nil && len(elementStack) >= 2 && elementStack[len(elementStack)-2] == "sequence"
+				if isInsideType {
+					field := model.XSDField{}
+					for _, attr := range tok.Attr {
+						switch attr.Name.Local {
+						case "name":
+							field.Name = attr.Value
+						case "type":
+							field.Type = attr.Value
+						case "minOccurs":
+							field.MinOccurs, _ = strconv.Atoi(attr.Value)
+						case "maxOccurs":
+							field.MaxOccurs, _ = strconv.Atoi(attr.Value)
+						}
 					}
+					currField = &field
+				} else {
+					elem := model.XSDElement{}
+					for _, attr := range tok.Attr {
+						switch attr.Name.Local {
+						case "name":
+							elem.Name = attr.Value
+						case "type":
+							elem.Type = attr.Value
+						}
+					}
+					currElem = &elem
 				}
-				currField = &field
-				currElem = &elem
 
 			case "complexType":
 				currType = &model.XSDType{}
-				for _, attr := range se.Attr {
+				for _, attr := range tok.Attr {
 					if attr.Name.Local == "name" {
 						currType.Name = attr.Value
 					}
 				}
 				if currType.Name == "" && currElem != nil {
-					currType.Name = currElem.Name
+					// currType.Name = currElem.Name
+					currType.Name = currElem.Name + "Type"
+					currType.Documentation = currElem.Documentation
 				}
 
 			case "simpleType":
+				inSimpleType = true
 				if currField != nil || currElem != nil {
-					inSimpleType = true
+					// Could handle inline restriction parsing here
 				} else {
 					currType = &model.XSDType{}
-					for _, attr := range se.Attr {
+					for _, attr := range tok.Attr {
 						if attr.Name.Local == "name" {
 							currType.Name = attr.Value
 						}
 					}
 				}
-				if currType != nil && currType.Name == "" && currElem != nil {
-					currType.Name = currElem.Name
-				}
 
 			case "attribute":
 				if currType != nil {
 					attr := model.XSDAttribute{}
-					for _, a := range se.Attr {
+					for _, a := range tok.Attr {
 						switch a.Name.Local {
 						case "name":
 							attr.Name = a.Value
@@ -101,11 +116,12 @@ func ParseXSD(path string) (*model.Schema, error) {
 							attr.Type = a.Value
 						}
 					}
-					currType.Attributes = append(currType.Attributes, attr)
+					currAttr = &attr
+					// currType.Attributes = append(currType.Attributes, attr)
 				}
 
 			case "restriction":
-				if inSimpleType && (currField != nil || currElem != nil) {
+				if inSimpleType {
 					restriction := parseRestriction(decoder)
 					if currField != nil {
 						currField.Restriction = restriction
@@ -117,6 +133,7 @@ func ParseXSD(path string) (*model.Schema, error) {
 
 			case "annotation":
 				inAnnotation = true
+
 			case "documentation":
 				if inAnnotation {
 					inDocumentation = true
@@ -126,12 +143,11 @@ func ParseXSD(path string) (*model.Schema, error) {
 
 		case xml.CharData:
 			if inDocumentation {
-				docBuffer.Write([]byte(se))
+				docBuffer.Write(tok)
 			}
 
 		case xml.EndElement:
-			switch se.Name.Local {
-
+			switch tok.Name.Local {
 			case "documentation":
 				inDocumentation = false
 				doc := strings.TrimSpace(docBuffer.String())
@@ -142,39 +158,40 @@ func ParseXSD(path string) (*model.Schema, error) {
 				} else if currType != nil {
 					currType.Documentation = doc
 				}
+				if currAttr != nil {
+					currAttr.Documentation = doc
+				}
 				docBuffer.Reset()
+
 			case "annotation":
 				inAnnotation = false
 
 			case "complexType", "simpleType":
-
 				if currType != nil {
-					currType.Documentation = strings.TrimSpace(docBuffer.String())
+					// Ensure inline element-level documentation isn't lost
+					if currType.Documentation == "" && currElem != nil && currElem.Documentation != "" {
+						currType.Documentation = currElem.Documentation
+					}
 					schema.Types = append(schema.Types, *currType)
-					currType = nil
-					docBuffer.Reset()
 				}
+				currType = nil
 				inSimpleType = false
-				fmt.Printf("schema: %v\n", schema)
 			case "element":
-				if currElem != nil {
-					currElem.Documentation = strings.TrimSpace(docBuffer.String())
-					docBuffer.Reset()
-				}
-				if currType != nil && currField != nil {
+				if currField != nil && currType != nil {
 					currType.Fields = append(currType.Fields, *currField)
-					currType.Documentation = strings.TrimSpace(docBuffer.String())
-
 				} else if currElem != nil {
 					schema.Elements = append(schema.Elements, *currElem)
 				}
 				currField = nil
 				currElem = nil
+				docBuffer.Reset()
+			}
+
+			if len(elementStack) > 0 {
+				elementStack = elementStack[:len(elementStack)-1]
 			}
 		}
 	}
-
-	fmt.Printf("schema: %v\n", schema)
 
 	return &schema, nil
 }

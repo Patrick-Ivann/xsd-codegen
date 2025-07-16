@@ -74,8 +74,9 @@ type XSDElement struct {
 
 // XSDAttribute represents an <xs:attribute> inside a complexType.
 type XSDAttribute struct {
-	Name string // Attribute name
-	Type string // Attribute type (e.g., xs:string)
+	Name          string // Attribute name
+	Type          string // Attribute type (e.g., xs:string)
+	Documentation string // Optional documentation from <annotation><documentation>
 }
 
 // Directive models an <xs:import> or <xs:include>.
