@@ -11,12 +11,13 @@ import (
 {{end}}
 type {{title .Name}} struct {
 {{- range .Fields }}
-    {{- if .Documentation}} // {{.Documentation}}{{end}}
-    {{title .Name}} {{goType .Type}} `xml:"{{.Name}}"{{restrictionTag .Restriction}}`
+{{- if .Documentation}}
+// {{.Documentation}}
+{{- end}}
+{{title .Name}} {{goType .Type}} `xml:"{{.Name}}{{omit .MinOccurs}}"{{restrictionTag .Restriction}}`
 {{- end }}
-
 {{- range .Attributes }}
-    {{- if .Documentation}} // {{.Documentation}}{{end}}
+    {{- if .Documentation}}    // {{.Documentation}}{{end}}
     {{title .Name}} {{goType .Type}} `xml:"{{.Name}},attr"`
 {{- end }}
 }

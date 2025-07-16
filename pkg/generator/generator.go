@@ -20,6 +20,7 @@ func GenerateGoCode(schema *model.Schema, tmplPath, outputPath string) error {
 		"restrictionTag": restrictionTag,
 		"goType":         XSDToGoType,
 		"title":          Title,
+		"omit":           omitTag,
 	}).Parse(string(tmplBytes))
 	if err != nil {
 		return fmt.Errorf("failed to parse template: %w", err)
@@ -40,6 +41,7 @@ func GenerateGoCode(schema *model.Schema, tmplPath, outputPath string) error {
 
 // restrictionTag generates a struct tag string for XSD restrictions.
 func restrictionTag(r *model.Restriction) string {
+	fmt.Printf("r: %v\n", r)
 	if r == nil {
 		return ""
 	}
