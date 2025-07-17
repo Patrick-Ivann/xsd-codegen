@@ -62,6 +62,8 @@ type XSDField struct {
 	MaxOccurs     int          // Maximum occurrences
 	Restriction   *Restriction // Optional restrictions for the field
 	Documentation string       // Optional documentation from <annotation><documentation>
+	Default       string
+	Fixed         string
 }
 
 // XSDElement represents a top-level element in the schema.
@@ -70,6 +72,7 @@ type XSDElement struct {
 	Type          string       // Element type
 	Restriction   *Restriction // Optional inline simpleType restrictions
 	Documentation string       // Optional documentation from <annotation><documentation>
+
 }
 
 // XSDAttribute represents an <xs:attribute> inside a complexType.
@@ -77,6 +80,10 @@ type XSDAttribute struct {
 	Name          string // Attribute name
 	Type          string // Attribute type (e.g., xs:string)
 	Documentation string // Optional documentation from <annotation><documentation>
+	Default       string
+	Fixed         string
+	MinOccurs     int // Minimum occurrences
+	MaxOccurs     int // Maximum occurrences
 }
 
 // Directive models an <xs:import> or <xs:include>.
