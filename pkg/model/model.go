@@ -40,10 +40,11 @@ package model
 
 // Schema represents a parsed XSD schema with its types and elements.
 type Schema struct {
-	Types    []XSDType    // List of complex/simple types
-	Elements []XSDElement // Top-level elements
-	Includes []Directive  // <xs:include> directives
-	Imports  []Directive  // <xs:import> directives
+	Types         []XSDType    // List of complex/simple types
+	Elements      []XSDElement // Top-level elements
+	Includes      []Directive  // <xs:include> directives
+	Imports       []Directive  // <xs:import> directives
+	Documentation string       // Schema-level documentation
 }
 
 // XSDType represents a complex or simple type in the schema.
@@ -72,7 +73,8 @@ type XSDElement struct {
 	Type          string       // Element type
 	Restriction   *Restriction // Optional inline simpleType restrictions
 	Documentation string       // Optional documentation from <annotation><documentation>
-
+	MinOccurs     int          // Minimum occurrences
+	MaxOccurs     int          // Maximum occurrences
 }
 
 // XSDAttribute represents an <xs:attribute> inside a complexType.

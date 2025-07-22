@@ -47,46 +47,63 @@ func GenerateGoCode(schema *model.Schema, tmplPath, outputPath string) error {
 
 // restrictionTag generates a struct tag string for XSD restrictions.
 func restrictionTag(r *model.Restriction) string {
-	fmt.Printf("r: %v\n", r)
 	if r == nil {
 		return ""
 	}
-	tags := []string{}
-	if len(r.Enumeration) > 0 {
-		tags = append(tags, fmt.Sprintf("enum=%s", strings.Join(r.Enumeration, "|")))
-	}
-	if r.Pattern != nil {
-		tags = append(tags, fmt.Sprintf("pattern=%s", *r.Pattern))
-	}
-	if r.MinLength != nil {
-		tags = append(tags, fmt.Sprintf("minlen=%d", *r.MinLength))
-	}
-	if r.MaxLength != nil {
-		tags = append(tags, fmt.Sprintf("maxlen=%d", *r.MaxLength))
-	}
+	var parts []string
+
+	// Length constraint
 	if r.Length != nil {
-		tags = append(tags, fmt.Sprintf("len=%d", *r.Length))
+		parts = append(parts, fmt.Sprintf("len=%d", *r.Length))
+	} else {
+		if r.MinLength != nil {
+			parts = append(parts, fmt.Sprintf("min=%d", *r.MinLength))
+		}
+		if r.MaxLength != nil {
+			parts = append(parts, fmt.Sprintf("max=%d", *r.MaxLength))
+		}
 	}
+
+	// Pattern (regular expression)
+	if r.Pattern != nil {
+		escaped := model.EscapeQuotes(*r.Pattern)
+		parts = append(parts, fmt.Sprintf("regexp=%q", escaped))
+	}
+
+	// Enumeration values (joined as alternates)
+	if len(r.Enumeration) > 0 {
+		quotedEnums := make([]string, len(r.Enumeration))
+		for i, val := range r.Enumeration {
+			quotedEnums[i] = fmt.Sprintf("%q", val)
+		}
+		enumExpr := strings.Join(quotedEnums, ",")
+		parts = append(parts, fmt.Sprintf("oneof=%s", enumExpr))
+	}
+
+	// Numeric boundaries
 	if r.MinInclusive != nil {
-		tags = append(tags, fmt.Sprintf("min=%s", *r.MinInclusive))
+		parts = append(parts, fmt.Sprintf("min=%s", *r.MinInclusive))
 	}
 	if r.MaxInclusive != nil {
-		tags = append(tags, fmt.Sprintf("max=%s", *r.MaxInclusive))
+		parts = append(parts, fmt.Sprintf("max=%s", *r.MaxInclusive))
 	}
 	if r.MinExclusive != nil {
-		tags = append(tags, fmt.Sprintf("minex=%s", *r.MinExclusive))
+		parts = append(parts, fmt.Sprintf("gt=%s", *r.MinExclusive))
 	}
 	if r.MaxExclusive != nil {
-		tags = append(tags, fmt.Sprintf("maxex=%s", *r.MaxExclusive))
+		parts = append(parts, fmt.Sprintf("lt=%s", *r.MaxExclusive))
+	}
+
+	// Digits
+	if r.TotalDigits != nil {
+		parts = append(parts, fmt.Sprintf("digits=%d", *r.TotalDigits))
 	}
 	if r.FractionDigits != nil {
-		tags = append(tags, fmt.Sprintf("frac=%d", *r.FractionDigits))
+		parts = append(parts, fmt.Sprintf("decimals=%d", *r.FractionDigits))
 	}
-	if r.TotalDigits != nil {
-		tags = append(tags, fmt.Sprintf("digits=%d", *r.TotalDigits))
+
+	if len(parts) == 0 {
+		return ""
 	}
-	if r.WhiteSpace != nil {
-		tags = append(tags, fmt.Sprintf("ws=%s", *r.WhiteSpace))
-	}
-	return strings.Join(tags, ",")
+	return fmt.Sprintf(" validate:\"%s\"", strings.Join(parts, ","))
 }

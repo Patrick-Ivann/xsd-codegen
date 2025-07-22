@@ -19,3 +19,7 @@ func NormalizeType(xsdType string) string {
 		return "string"
 	}
 }
+
+func EscapeQuotes(s string) string {
+	return strings.ReplaceAll(s, `"`, `\"`)
+}

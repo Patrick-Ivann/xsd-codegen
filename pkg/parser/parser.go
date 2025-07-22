@@ -26,8 +26,8 @@ func ParseXSD(path string) (*model.Schema, error) {
 	var currType *model.XSDType
 	var currField *model.XSDField
 	var currElem *model.XSDElement
-	var inSimpleType bool
-	var inAnnotation bool
+	var currAttr *model.XSDAttribute
+	var currRestriction *model.Restriction
 	var inDocumentation bool
 	var docBuffer strings.Builder
 
@@ -37,29 +37,51 @@ func ParseXSD(path string) (*model.Schema, error) {
 			break
 		}
 		if err != nil {
-			return nil, fmt.Errorf("XML decode error: %w", err)
+			return nil, fmt.Errorf("XML decoding failed: %w", err)
 		}
 
-		switch se := token.(type) {
-
+		switch tok := token.(type) {
 		case xml.StartElement:
-			switch se.Name.Local {
+			switch tok.Name.Local {
+			case "include":
+				for _, a := range tok.Attr {
+					if a.Name.Local == "schemaLocation" {
+						schema.Includes = append(schema.Includes, model.Directive{
+							SchemaLocation: a.Value,
+						})
+					}
+				}
+
+			case "import":
+				for _, a := range tok.Attr {
+					if a.Name.Local == "namespace" {
+						schema.Imports = append(schema.Imports, model.Directive{
+							SchemaLocation: a.Value,
+						})
+					}
+				}
 
 			case "element":
 				field := model.XSDField{}
 				elem := model.XSDElement{}
-				for _, attr := range se.Attr {
-					switch attr.Name.Local {
+				for _, a := range tok.Attr {
+					switch a.Name.Local {
 					case "name":
-						field.Name = attr.Value
-						elem.Name = attr.Value
+						field.Name = a.Value
+						elem.Name = a.Value
+					case "ref":
+						refName := strings.TrimPrefix(a.Value, "tns:")
+						field.Name = refName
+						field.Type = refName // assuming global element has type = name
 					case "type":
-						field.Type = attr.Value
-						elem.Type = attr.Value
+						field.Type = a.Value
+						elem.Type = a.Value
 					case "minOccurs":
-						field.MinOccurs, _ = strconv.Atoi(attr.Value)
+						field.MinOccurs = atoi(a.Value)
+						elem.MinOccurs = field.MinOccurs
 					case "maxOccurs":
-						field.MaxOccurs, _ = strconv.Atoi(attr.Value)
+						field.MaxOccurs = atoi(a.Value)
+						elem.MaxOccurs = field.MaxOccurs
 					}
 				}
 				currField = &field
@@ -67,20 +89,10 @@ func ParseXSD(path string) (*model.Schema, error) {
 
 			case "complexType":
 				currType = &model.XSDType{}
-				for _, attr := range se.Attr {
-					if attr.Name.Local == "name" {
-						currType.Name = attr.Value
+				for _, a := range tok.Attr {
+					if a.Name.Local == "name" {
+						currType.Name = a.Value
 					}
-				}
-				if currType.Name == "" && currElem != nil {
-					currType.Name = currElem.Name
-					currType.Documentation = currElem.Documentation
-				}
-
-			case "simpleType":
-				inSimpleType = true
-				if currType == nil {
-					currType = &model.XSDType{}
 				}
 				if currType.Name == "" && currElem != nil {
 					currType.Name = currElem.Name
@@ -88,90 +100,189 @@ func ParseXSD(path string) (*model.Schema, error) {
 				}
 
 			case "attribute":
-				if currType != nil {
-					attr := model.XSDAttribute{}
-					for _, a := range se.Attr {
-						switch a.Name.Local {
-						case "name":
-							attr.Name = a.Value
-						case "type":
-							attr.Type = a.Value
-						}
+				attr := model.XSDAttribute{}
+				for _, a := range tok.Attr {
+					switch a.Name.Local {
+					case "name":
+						attr.Name = a.Value
+					case "type":
+						attr.Type = a.Value
 					}
-					currType.Attributes = append(currType.Attributes, attr)
+				}
+				currAttr = &attr
+
+			case "simpleType":
+				if currRestriction == nil {
+					currRestriction = &model.Restriction{}
 				}
 
 			case "restriction":
-				if inSimpleType && (currField != nil || currElem != nil) {
-					restriction := parseRestriction(decoder)
-					if currField != nil {
-						currField.Restriction = restriction
-					}
-					if currElem != nil {
-						currElem.Restriction = restriction
+				if currRestriction == nil {
+					currRestriction = &model.Restriction{}
+				}
+				for _, a := range tok.Attr {
+					if a.Name.Local == "base" {
+						if currField != nil && currField.Type == "" {
+							currField.Type = a.Value
+						}
 					}
 				}
 
 			case "annotation":
-				inAnnotation = true
+				// pass
 
 			case "documentation":
-				if inAnnotation {
-					inDocumentation = true
-					docBuffer.Reset()
+				inDocumentation = true
+				docBuffer.Reset()
+
+			// ➕ Restriction facets
+			case "enumeration":
+				for _, a := range tok.Attr {
+					if a.Name.Local == "value" {
+						currRestriction.Enumeration = append(currRestriction.Enumeration, a.Value)
+					}
+				}
+
+			case "length":
+				for _, a := range tok.Attr {
+					if a.Name.Local == "value" {
+						currRestriction.Length = parseIntPtr(a.Value)
+					}
+				}
+
+			case "minLength":
+				for _, a := range tok.Attr {
+					if a.Name.Local == "value" {
+						currRestriction.MinLength = parseIntPtr(a.Value)
+					}
+				}
+
+			case "maxLength":
+				for _, a := range tok.Attr {
+					if a.Name.Local == "value" {
+						currRestriction.MaxLength = parseIntPtr(a.Value)
+					}
+				}
+
+			case "pattern":
+				for _, a := range tok.Attr {
+					if a.Name.Local == "value" {
+						currRestriction.Pattern = parseStrPtr(a.Value)
+					}
+				}
+
+			case "whiteSpace":
+				for _, a := range tok.Attr {
+					if a.Name.Local == "value" {
+						currRestriction.WhiteSpace = parseStrPtr(a.Value)
+					}
+				}
+
+			case "minInclusive":
+				for _, a := range tok.Attr {
+					if a.Name.Local == "value" {
+						currRestriction.MinInclusive = parseStrPtr(a.Value)
+					}
+				}
+
+			case "maxInclusive":
+				for _, a := range tok.Attr {
+					if a.Name.Local == "value" {
+						currRestriction.MaxInclusive = parseStrPtr(a.Value)
+					}
+				}
+
+			case "minExclusive":
+				for _, a := range tok.Attr {
+					if a.Name.Local == "value" {
+						currRestriction.MinExclusive = parseStrPtr(a.Value)
+					}
+				}
+
+			case "maxExclusive":
+				for _, a := range tok.Attr {
+					if a.Name.Local == "value" {
+						currRestriction.MaxExclusive = parseStrPtr(a.Value)
+					}
+				}
+
+			case "totalDigits":
+				for _, a := range tok.Attr {
+					if a.Name.Local == "value" {
+						currRestriction.TotalDigits = parseIntPtr(a.Value)
+					}
+				}
+
+			case "fractionDigits":
+				for _, a := range tok.Attr {
+					if a.Name.Local == "value" {
+						currRestriction.FractionDigits = parseIntPtr(a.Value)
+					}
 				}
 			}
 
 		case xml.CharData:
 			if inDocumentation {
-				docBuffer.Write([]byte(se))
+				docBuffer.Write([]byte(tok))
 			}
 
 		case xml.EndElement:
-			switch se.Name.Local {
-
+			switch tok.Name.Local {
 			case "documentation":
 				inDocumentation = false
 				doc := strings.TrimSpace(docBuffer.String())
-				if currField != nil {
-					currField.Documentation = doc
-				} else if currElem != nil {
-					currElem.Documentation = doc
-				} else if currType != nil {
-					currType.Documentation = doc
+				if doc != "" {
+					if currField != nil {
+						currField.Documentation = doc
+						fmt.Printf("Assigned documentation to field: %s\n", doc)
+					} else if currElem != nil {
+						currElem.Documentation = doc
+						fmt.Printf("Assigned documentation to element: %s\n", doc)
+					} else if currType != nil {
+						currType.Documentation = doc
+						fmt.Printf("Assigned documentation to type: %s\n", doc)
+					} else {
+						schema.Documentation = doc
+						fmt.Printf("Assigned documentation to schema: %s\n", doc)
+					}
 				}
 				docBuffer.Reset()
 
-			case "annotation":
-				inAnnotation = false
-
-			case "complexType", "simpleType":
-				if currType != nil {
-					schema.Types = append(schema.Types, *currType)
-					currType = nil
+			case "restriction":
+				if currField != nil {
+					currField.Restriction = currRestriction
 				}
-				inSimpleType = false
+				if currElem != nil {
+					currElem.Restriction = currRestriction
+				}
+				currRestriction = nil
 
 			case "element":
 				if currType != nil && currField != nil {
 					currType.Fields = append(currType.Fields, *currField)
-				} else if currElem != nil && currElem.Type == "" && currElem.Name != "" {
-					// Handle anonymous inline simpleType
-					if currType == nil {
-						currType = &model.XSDType{Name: currElem.Name}
-					}
-					field := model.XSDField{
-						Name:          currElem.Name,
-						Type:          "xs:string", // default fallback
-						Restriction:   currElem.Restriction,
-						Documentation: currElem.Documentation,
-					}
-					currType.Fields = append(currType.Fields, field)
 				} else if currElem != nil {
 					schema.Elements = append(schema.Elements, *currElem)
 				}
 				currField = nil
 				currElem = nil
+
+			case "complexType":
+				if currType != nil {
+					fmt.Printf("currType: %v\n", currType)
+					fmt.Printf("currField: %v\n", currField)
+					fmt.Printf("currElem: %v\n", currElem)
+					if currElem != nil {
+						fmt.Printf("currElem.Documentation: %v\n", currElem.Documentation)
+					}
+					schema.Types = append(schema.Types, *currType)
+					currType = nil
+				}
+
+			case "attribute":
+				if currType != nil && currAttr != nil {
+					currType.Attributes = append(currType.Attributes, *currAttr)
+				}
+				currAttr = nil
 			}
 		}
 	}
@@ -179,109 +290,31 @@ func ParseXSD(path string) (*model.Schema, error) {
 	return &schema, nil
 }
 
-// parseRestriction parses an <xs:restriction> element and its children.
-func parseRestriction(decoder *xml.Decoder) *model.Restriction {
-	r := &model.Restriction{}
-	depth := 1
-	for depth > 0 {
-		t, err := decoder.Token()
-		if err != nil {
-			break
-		}
-		switch se := t.(type) {
-		case xml.StartElement:
-			switch se.Name.Local {
-			case "enumeration":
-				for _, attr := range se.Attr {
-					if attr.Name.Local == "value" {
-						r.Enumeration = append(r.Enumeration, attr.Value)
-					}
-				}
-			case "pattern":
-				for _, attr := range se.Attr {
-					if attr.Name.Local == "value" {
-						v := attr.Value
-						r.Pattern = &v
-					}
-				}
-			case "minLength":
-				for _, attr := range se.Attr {
-					if attr.Name.Local == "value" {
-						v, _ := strconv.Atoi(attr.Value)
-						r.MinLength = &v
-					}
-				}
-			case "maxLength":
-				for _, attr := range se.Attr {
-					if attr.Name.Local == "value" {
-						v, _ := strconv.Atoi(attr.Value)
-						r.MaxLength = &v
-					}
-				}
-			case "length":
-				for _, attr := range se.Attr {
-					if attr.Name.Local == "value" {
-						v, _ := strconv.Atoi(attr.Value)
-						r.Length = &v
-					}
-				}
-			case "minInclusive":
-				for _, attr := range se.Attr {
-					if attr.Name.Local == "value" {
-						v := attr.Value
-						r.MinInclusive = &v
-					}
-				}
-			case "maxInclusive":
-				for _, attr := range se.Attr {
-					if attr.Name.Local == "value" {
-						v := attr.Value
-						r.MaxInclusive = &v
-					}
-				}
-			case "minExclusive":
-				for _, attr := range se.Attr {
-					if attr.Name.Local == "value" {
-						v := attr.Value
-						r.MinExclusive = &v
-					}
-				}
-			case "maxExclusive":
-				for _, attr := range se.Attr {
-					if attr.Name.Local == "value" {
-						v := attr.Value
-						r.MaxExclusive = &v
-					}
-				}
-			case "fractionDigits":
-				for _, attr := range se.Attr {
-					if attr.Name.Local == "value" {
-						v, _ := strconv.Atoi(attr.Value)
-						r.FractionDigits = &v
-					}
-				}
-			case "totalDigits":
-				for _, attr := range se.Attr {
-					if attr.Name.Local == "value" {
-						v, _ := strconv.Atoi(attr.Value)
-						r.TotalDigits = &v
-					}
-				}
-			case "whiteSpace":
-				for _, attr := range se.Attr {
-					if attr.Name.Local == "value" {
-						v := attr.Value
-						r.WhiteSpace = &v
-					}
-				}
-			}
-			depth++
-		case xml.EndElement:
-			depth--
-			if se.Name.Local == "restriction" {
-				return r
-			}
-		}
+func atoi(s string) int {
+	i, _ := strconv.Atoi(s)
+	return i
+}
+
+func parseInt(s string) int {
+	i, _ := strconv.Atoi(s)
+	return i
+}
+
+func parseIntPtr(s string) *int {
+	if s == "" {
+		return nil
 	}
-	return r
+	i, err := strconv.Atoi(s)
+	if err != nil {
+		return nil
+	}
+	return &i
+}
+
+func parseStrPtr(s string) *string {
+	if s == "" {
+		return nil
+	}
+	str := strings.TrimSpace(s)
+	return &str
 }
