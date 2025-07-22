@@ -30,6 +30,7 @@ func ParseXSD(path string) (*model.Schema, error) {
 	var currRestriction *model.Restriction
 	var inDocumentation bool
 	var docBuffer strings.Builder
+	var currentDoc string
 
 	for {
 		token, err := decoder.Token()
@@ -63,7 +64,7 @@ func ParseXSD(path string) (*model.Schema, error) {
 
 			case "element":
 				field := model.XSDField{}
-				elem := model.XSDElement{}
+				elem := model.XSDElement{Documentation: currentDoc}
 				for _, a := range tok.Attr {
 					switch a.Name.Local {
 					case "name":
@@ -86,9 +87,10 @@ func ParseXSD(path string) (*model.Schema, error) {
 				}
 				currField = &field
 				currElem = &elem
+				currentDoc = ""
 
 			case "complexType":
-				currType = &model.XSDType{}
+				currType = &model.XSDType{Documentation: currentDoc}
 				for _, a := range tok.Attr {
 					if a.Name.Local == "name" {
 						currType.Name = a.Value
@@ -96,8 +98,8 @@ func ParseXSD(path string) (*model.Schema, error) {
 				}
 				if currType.Name == "" && currElem != nil {
 					currType.Name = currElem.Name
-					currType.Documentation = currElem.Documentation
 				}
+				currentDoc = ""
 
 			case "attribute":
 				attr := model.XSDAttribute{}
@@ -230,22 +232,7 @@ func ParseXSD(path string) (*model.Schema, error) {
 			switch tok.Name.Local {
 			case "documentation":
 				inDocumentation = false
-				doc := strings.TrimSpace(docBuffer.String())
-				if doc != "" {
-					if currField != nil {
-						currField.Documentation = doc
-						fmt.Printf("Assigned documentation to field: %s\n", doc)
-					} else if currElem != nil {
-						currElem.Documentation = doc
-						fmt.Printf("Assigned documentation to element: %s\n", doc)
-					} else if currType != nil {
-						currType.Documentation = doc
-						fmt.Printf("Assigned documentation to type: %s\n", doc)
-					} else {
-						schema.Documentation = doc
-						fmt.Printf("Assigned documentation to schema: %s\n", doc)
-					}
-				}
+				currentDoc = strings.TrimSpace(docBuffer.String())
 				docBuffer.Reset()
 
 			case "restriction":
@@ -258,31 +245,32 @@ func ParseXSD(path string) (*model.Schema, error) {
 				currRestriction = nil
 
 			case "element":
-				if currType != nil && currField != nil {
-					currType.Fields = append(currType.Fields, *currField)
-				} else if currElem != nil {
-					schema.Elements = append(schema.Elements, *currElem)
+				if currField != nil {
+					currField.Documentation = currentDoc
+					if currType != nil {
+						currType.Fields = append(currType.Fields, *currField)
+					} else {
+						schema.Elements = append(schema.Elements, *currElem)
+					}
 				}
 				currField = nil
 				currElem = nil
+				currentDoc = ""
 
 			case "complexType":
 				if currType != nil {
-					fmt.Printf("currType: %v\n", currType)
-					fmt.Printf("currField: %v\n", currField)
-					fmt.Printf("currElem: %v\n", currElem)
-					if currElem != nil {
-						fmt.Printf("currElem.Documentation: %v\n", currElem.Documentation)
-					}
 					schema.Types = append(schema.Types, *currType)
-					currType = nil
 				}
+				currType = nil
+				currentDoc = ""
 
 			case "attribute":
 				if currType != nil && currAttr != nil {
+					currAttr.Documentation = currentDoc
 					currType.Attributes = append(currType.Attributes, *currAttr)
 				}
 				currAttr = nil
+				currentDoc = ""
 			}
 		}
 	}
