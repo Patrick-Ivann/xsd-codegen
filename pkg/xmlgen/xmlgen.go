@@ -1,108 +1,74 @@
-// Package xmlgen provides utilities to generate XML output from Go structs with dummy data.
 package xmlgen
 
 import (
-	"bytes"
-	"encoding/xml"
-	"fmt"
-	"time"
+	"strings"
 
-	"github.com/Patrick-Ivann/xsd-codegen/pkg/model"
+	"github.com/Patrick-Ivann/xsd-codegen/pkg/helpers"
+	"github.com/Patrick-Ivann/xsd-codegen/pkg/parser"
+	"github.com/beevik/etree"
 )
 
-// GenerateDummyStruct recursively creates a Go struct instance with dummy data for XML marshaling.
-func GenerateDummyStruct(typ model.XSDType) interface{} {
-	// Use a map to represent the struct fields dynamically.
-	m := make(map[string]interface{})
-	for _, f := range typ.Fields {
-		m[f.Name] = dummyValueForType(f)
-	}
-	for _, attr := range typ.Attributes {
-		m[attr.Name] = dummyValueForType(model.XSDField{Name: attr.Name, Type: attr.Type})
-	}
-	return m
-}
+func GenerateElement(schema *parser.XSDSchema, element parser.XSDElement) *etree.Element {
+	elem := etree.NewElement(element.Name)
 
-// dummyValueForType returns a dummy value for a given XSDField.
-func dummyValueForType(f model.XSDField) interface{} {
-	val := GenerateDummyValue(f)
-	switch f.Type {
-	case "int":
-		return parseInt(val)
-	case "float64":
-		return parseFloat(val)
-	case "bool":
-		return val == "true"
-	case "time.Time":
-		t, _ := time.Parse(time.RFC3339, val)
-		return t
-	default:
-		return val
-	}
-}
-
-// parseInt safely converts a string to int.
-func parseInt(s string) int {
-	var i int
-	fmt.Sscanf(s, "%d", &i)
-	return i
-}
-
-// parseFloat safely converts a string to float64.
-func parseFloat(s string) float64 {
-	var f float64
-	fmt.Sscanf(s, "%f", &f)
-	return f
-}
-
-// MarshalDummyXML marshals the dummy struct into XML with the given root element name.
-func MarshalDummyXML(rootName string, typ model.XSDType) ([]byte, error) {
-	dummy := GenerateDummyStruct(typ)
-	// Create a wrapper struct for the root element.
-	root := map[string]interface{}{rootName: dummy}
-	buf := &bytes.Buffer{}
-	enc := xml.NewEncoder(buf)
-	enc.Indent("", "  ")
-	// Use a helper to convert map to XML tokens.
-	if err := encodeMapToXML(enc, root, ""); err != nil {
-		return nil, err
-	}
-	enc.Flush()
-	return buf.Bytes(), nil
-}
-
-// encodeMapToXML recursively encodes a map[string]interface{} as XML tokens.
-func encodeMapToXML(enc *xml.Encoder, m map[string]interface{}, parent string) error {
-	for k, v := range m {
-		start := xml.StartElement{Name: xml.Name{Local: k}}
-		if err := enc.EncodeToken(start); err != nil {
-			return err
-		}
-		switch val := v.(type) {
-		case map[string]interface{}:
-			if err := encodeMapToXML(enc, val, k); err != nil {
-				return err
-			}
-		case []interface{}:
-			for _, item := range val {
-				if itemMap, ok := item.(map[string]interface{}); ok {
-					if err := encodeMapToXML(enc, itemMap, k); err != nil {
-						return err
-					}
-				} else {
-					if err := enc.EncodeElement(item, xml.StartElement{Name: xml.Name{Local: k}}); err != nil {
-						return err
-					}
+	if element.Type != "" {
+		if strings.HasPrefix(element.Type, "tns:") {
+			typeName := strings.TrimPrefix(element.Type, "tns:")
+			for _, ct := range schema.ComplexTypes {
+				if ct.Name == typeName {
+					appendComplexContent(schema, elem, ct)
+					return elem
 				}
 			}
-		default:
-			if err := enc.EncodeToken(xml.CharData([]byte(fmt.Sprint(val)))); err != nil {
-				return err
+			for _, st := range schema.SimpleTypes {
+				if st.Name == typeName {
+					elem.SetText(helpers.GenerateValue(st.Restriction.Base, st.Restriction))
+					return elem
+				}
+			}
+		} else {
+			elem.SetText(helpers.GenerateValue(element.Type, nil))
+		}
+	} else if element.ComplexType != nil {
+		appendComplexContent(schema, elem, *element.ComplexType)
+	} else if element.SimpleType != nil {
+		elem.SetText(helpers.GenerateValue(element.SimpleType.Restriction.Base, element.SimpleType.Restriction))
+	} else if element.Ref != "" {
+		refName := strings.Split(element.Ref, ":")[1]
+		for _, el := range schema.Elements {
+			if el.Name == refName {
+				refElem := GenerateElement(schema, el)
+				elem = refElem
 			}
 		}
-		if err := enc.EncodeToken(xml.EndElement{Name: xml.Name{Local: k}}); err != nil {
-			return err
+	}
+
+	return elem
+}
+
+func appendComplexContent(schema *parser.XSDSchema, elem *etree.Element, ct parser.XSDComplexType) {
+	if ct.Sequence != nil {
+		for _, child := range ct.Sequence.Elements {
+			minOccurs := helpers.ParseOccurs(child.MinOccurs, 1)
+			maxOccurs := helpers.ParseOccurs(child.MaxOccurs, 1)
+			count := helpers.RandomBetween(minOccurs, maxOccurs)
+			for i := 0; i < count; i++ {
+				childXML := GenerateElement(schema, child)
+				elem.AddChild(childXML)
+			}
 		}
 	}
-	return nil
+
+	if ct.Choice != nil && len(ct.Choice.Elements) > 0 {
+		choice := ct.Choice.Elements[helpers.RandomBetween(0, len(ct.Choice.Elements)-1)]
+		elem.AddChild(GenerateElement(schema, choice))
+	}
+
+	for _, attr := range ct.Attrs {
+		val := helpers.GenerateValue(attr.Type, nil)
+		if attr.Fixed != "" {
+			val = attr.Fixed
+		}
+		elem.CreateAttr(attr.Name, val)
+	}
 }
