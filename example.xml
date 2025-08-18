@@ -1,0 +1,83 @@
+<purchaseOrder orderDate="1987-04-02" confirmDate="2023-01-25" xmlns="http://tempuri.org/PurchaseOrderSchema.xsd" xsi:schemaLocation="http://tempuri.org/PurchaseOrderSchema.xsd schema.xsd" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <shipTo country="US">
+    <name>qqIQR1KHxYkP</name>
+    <street>hltjRz5r5</street>
+    <city>H0mcBVLbmmLSW</city>
+    <state>LZhW048hxDQsBy</state>
+    <zip>-47963.670592</zip>
+  </shipTo>
+  <billTo country="US">
+    <name>CBXvy</name>
+    <street>kovajVnONn8QD</street>
+    <city>M2Hox</city>
+    <state>imh4CQ28</state>
+    <zip>-6132.495981</zip>
+  </billTo>
+  <items>
+    <item partNum="default">
+      <productName>uGL1ktkUKcHX8</productName>
+      <quantity>1</quantity>
+      <USPrice>-453491.359776</USPrice>
+      <comment>uBBO6IVk</comment>
+      <shipDate>2008-03-17</shipDate>
+    </item>
+    <item partNum="default">
+      <productName>KMX8Zyuct8ibFY</productName>
+      <quantity>3</quantity>
+      <USPrice>-442513.598749</USPrice>
+      <comment>VuYj1cBy</comment>
+    </item>
+    <item partNum="default">
+      <productName>KarSN</productName>
+      <quantity>5</quantity>
+      <USPrice>-340299.497441</USPrice>
+      <comment>BnCPjyXwvv</comment>
+      <shipDate>1986-11-19</shipDate>
+    </item>
+    <item partNum="default">
+      <productName>BBdZYWoxHZ</productName>
+      <quantity>1</quantity>
+      <USPrice>-415090.299349</USPrice>
+      <comment>44exog6Ar</comment>
+      <shipDate>1993-03-22</shipDate>
+    </item>
+    <item partNum="default">
+      <productName>uRhBhR8QqQkX7S</productName>
+      <quantity>4</quantity>
+      <USPrice>791088.872351</USPrice>
+      <comment>vxfwkj</comment>
+      <shipDate>1998-01-24</shipDate>
+    </item>
+    <item partNum="default">
+      <productName>M34dVAj</productName>
+      <quantity>5</quantity>
+      <USPrice>-550774.178412</USPrice>
+      <comment>1TzG5Qhlk</comment>
+    </item>
+    <item partNum="default">
+      <productName>KuG3E7LkObTi</productName>
+      <quantity>1</quantity>
+      <USPrice>-431381.150022</USPrice>
+      <comment>CM1tghSpPt9p</comment>
+    </item>
+    <item partNum="default">
+      <productName>tsVHCcDsgh4W82</productName>
+      <quantity>3</quantity>
+      <USPrice>-769157.667519</USPrice>
+      <comment>Amma6f8lW</comment>
+    </item>
+    <item partNum="default">
+      <productName>OMQ7FCrbe</productName>
+      <quantity>2</quantity>
+      <USPrice>-157872.806415</USPrice>
+      <comment>KjuIOY</comment>
+    </item>
+    <item partNum="default">
+      <productName>Kl1jl7</productName>
+      <quantity>1</quantity>
+      <USPrice>938538.166651</USPrice>
+      <comment>iOuvmBnVZ0</comment>
+      <shipDate>2016-01-23</shipDate>
+    </item>
+  </items>
+</purchaseOrder>

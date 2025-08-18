@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 
+	"github.com/Patrick-Ivann/xsd-codegen/pkg/helpers"
 	"github.com/Patrick-Ivann/xsd-codegen/pkg/parser"
 	"github.com/Patrick-Ivann/xsd-codegen/pkg/xmlgen"
 	"github.com/beevik/etree"
@@ -28,7 +29,7 @@ func main() {
 	doc := etree.NewDocument()
 	for _, el := range schema.Elements {
 		if el.Name == "purchaseOrder" { // entrypoint element
-			root := xmlgen.GenerateElement(schema, el)
+			root := xmlgen.GenerateElement(schema, el, helpers.DefaultValueGenerator{})
 			root.CreateAttr("xmlns", schema.TargetNamespace)
 			root.CreateAttr("xsi:schemaLocation", schema.TargetNamespace+" schema.xsd")
 			root.CreateAttr("xmlns:xsi", "http://www.w3.org/2001/XMLSchema-instance")
