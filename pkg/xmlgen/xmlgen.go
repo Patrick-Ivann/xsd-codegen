@@ -4,11 +4,11 @@ import (
 	"strings"
 
 	"github.com/Patrick-Ivann/xsd-codegen/pkg/helpers"
-	"github.com/Patrick-Ivann/xsd-codegen/pkg/parser"
+	"github.com/Patrick-Ivann/xsd-codegen/pkg/model"
 	"github.com/beevik/etree"
 )
 
-func GenerateElement(schema *parser.XSDSchema, element parser.XSDElement) *etree.Element {
+func GenerateElement(schema *model.XSDSchema, element model.XSDElement, gen helpers.ValueGenerator) *etree.Element {
 	elem := etree.NewElement(element.Name)
 
 	if element.Type != "" {
@@ -16,7 +16,7 @@ func GenerateElement(schema *parser.XSDSchema, element parser.XSDElement) *etree
 			typeName := strings.TrimPrefix(element.Type, "tns:")
 			for _, ct := range schema.ComplexTypes {
 				if ct.Name == typeName {
-					appendComplexContent(schema, elem, ct)
+					appendComplexContent(schema, elem, ct, gen)
 					return elem
 				}
 			}
@@ -30,14 +30,14 @@ func GenerateElement(schema *parser.XSDSchema, element parser.XSDElement) *etree
 			elem.SetText(helpers.GenerateValue(element.Type, nil))
 		}
 	} else if element.ComplexType != nil {
-		appendComplexContent(schema, elem, *element.ComplexType)
+		appendComplexContent(schema, elem, *element.ComplexType, gen)
 	} else if element.SimpleType != nil {
 		elem.SetText(helpers.GenerateValue(element.SimpleType.Restriction.Base, element.SimpleType.Restriction))
 	} else if element.Ref != "" {
 		refName := strings.Split(element.Ref, ":")[1]
 		for _, el := range schema.Elements {
 			if el.Name == refName {
-				refElem := GenerateElement(schema, el)
+				refElem := GenerateElement(schema, el, gen)
 				elem = refElem
 			}
 		}
@@ -46,14 +46,14 @@ func GenerateElement(schema *parser.XSDSchema, element parser.XSDElement) *etree
 	return elem
 }
 
-func appendComplexContent(schema *parser.XSDSchema, elem *etree.Element, ct parser.XSDComplexType) {
+func appendComplexContent(schema *model.XSDSchema, elem *etree.Element, ct model.XSDComplexType, gen helpers.ValueGenerator) {
 	if ct.Sequence != nil {
 		for _, child := range ct.Sequence.Elements {
 			minOccurs := helpers.ParseOccurs(child.MinOccurs, 1)
 			maxOccurs := helpers.ParseOccurs(child.MaxOccurs, 1)
 			count := helpers.RandomBetween(minOccurs, maxOccurs)
 			for i := 0; i < count; i++ {
-				childXML := GenerateElement(schema, child)
+				childXML := GenerateElement(schema, child, gen)
 				elem.AddChild(childXML)
 			}
 		}
@@ -61,7 +61,7 @@ func appendComplexContent(schema *parser.XSDSchema, elem *etree.Element, ct pars
 
 	if ct.Choice != nil && len(ct.Choice.Elements) > 0 {
 		choice := ct.Choice.Elements[helpers.RandomBetween(0, len(ct.Choice.Elements)-1)]
-		elem.AddChild(GenerateElement(schema, choice))
+		elem.AddChild(GenerateElement(schema, choice, gen))
 	}
 
 	for _, attr := range ct.Attrs {
