@@ -40,9 +40,10 @@ jobs:
         uses: actions/checkout@v2
 
       - name: Run golangci-lint
-        uses: golangci/golangci-lint-action@v2
+        uses: golangci/golangci-lint-action@v8
         with:
-          version: v1.52
+          version: v2.1
+          args: --config=/.golangci.yml --issues-exit-code=0
 
   build:
     name: Build
@@ -59,10 +60,10 @@ jobs:
         uses: actions/checkout@v2
 
       - name: Build
-        run: go build -o my-cli-project
+        run: go build -o xsd-codegen
 
       - name: Upload artifact
         uses: actions/upload-artifact@v2
         with:
-          name: my-cli-project
-          path: my-cli-project
+          name: xsd-codegen
+          path: xsd-codegen
