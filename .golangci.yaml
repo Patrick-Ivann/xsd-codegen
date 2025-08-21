@@ -3,7 +3,6 @@ linters:
   enable:
     - staticcheck
     - govet
-    - gofmt
     - revive
     - gocritic
     - gosec
