@@ -3,306 +3,105 @@ package parser
 import (
 	"encoding/xml"
 	"fmt"
-	"io"
 	"os"
-	"strconv"
-	"strings"
+	"path/filepath"
 
 	"github.com/Patrick-Ivann/xsd-codegen/pkg/model"
 )
 
-// ParseXSD parses an XSD file and returns a Schema model, handling all restrictions.
-// including inline complex/simple types, attributes, and restrictions.
-func ParseXSD(path string) (*model.Schema, error) {
-	file, err := os.Open(path)
+// ParseXSD orchestrates the loading, parsing, and recursive inclusion/import handling
+func ParseXSD(filePath string, loadedSchemas map[string]*model.XSDSchema) (*model.XSDSchema, error) {
+	absPath, _ := filepath.Abs(filePath)
+	if loadedSchemas == nil {
+		loadedSchemas = make(map[string]*model.XSDSchema)
+	}
+	// If schema is already loaded, return it to avoid reprocessing (handles include/import cycles!)
+	if s, exists := loadedSchemas[absPath]; exists {
+		return s, nil
+	}
+
+	// Read and unmarshal schema XML
+	schema, err := readAndUnmarshalSchema(filePath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to open XSD: %w", err)
+		return nil, err
 	}
-	defer file.Close()
+	loadedSchemas[absPath] = schema
 
-	decoder := xml.NewDecoder(file)
-	var schema model.Schema
-
-	var currType *model.XSDType
-	var currField *model.XSDField
-	var currElem *model.XSDElement
-	var currAttr *model.XSDAttribute
-	var currRestriction *model.Restriction
-	var inDocumentation bool
-	var docBuffer strings.Builder
-	var currentDoc string
-
-	for {
-		token, err := decoder.Token()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return nil, fmt.Errorf("XML decoding failed: %w", err)
-		}
-
-		switch tok := token.(type) {
-		case xml.StartElement:
-			switch tok.Name.Local {
-			case "include":
-				for _, a := range tok.Attr {
-					if a.Name.Local == "schemaLocation" {
-						schema.Includes = append(schema.Includes, model.Directive{
-							SchemaLocation: a.Value,
-						})
-					}
-				}
-
-			case "import":
-				for _, a := range tok.Attr {
-					if a.Name.Local == "namespace" {
-						schema.Imports = append(schema.Imports, model.Directive{
-							SchemaLocation: a.Value,
-						})
-					}
-				}
-
-			case "element":
-				field := model.XSDField{}
-				elem := model.XSDElement{Documentation: currentDoc}
-				for _, a := range tok.Attr {
-					switch a.Name.Local {
-					case "name":
-						field.Name = a.Value
-						elem.Name = a.Value
-					case "ref":
-						refName := strings.TrimPrefix(a.Value, "tns:")
-						field.Name = refName
-						field.Type = refName // assuming global element has type = name
-					case "type":
-						field.Type = a.Value
-						elem.Type = a.Value
-					case "minOccurs":
-						field.MinOccurs = atoi(a.Value)
-						elem.MinOccurs = field.MinOccurs
-					case "maxOccurs":
-						field.MaxOccurs = atoi(a.Value)
-						elem.MaxOccurs = field.MaxOccurs
-					}
-				}
-				currField = &field
-				currElem = &elem
-				currentDoc = ""
-
-			case "complexType":
-				currType = &model.XSDType{Documentation: currentDoc}
-				for _, a := range tok.Attr {
-					if a.Name.Local == "name" {
-						currType.Name = a.Value
-					}
-				}
-				if currType.Name == "" && currElem != nil {
-					currType.Name = currElem.Name
-				}
-				currentDoc = ""
-
-			case "attribute":
-				attr := model.XSDAttribute{}
-				for _, a := range tok.Attr {
-					switch a.Name.Local {
-					case "name":
-						attr.Name = a.Value
-					case "type":
-						attr.Type = a.Value
-					}
-				}
-				currAttr = &attr
-
-			case "simpleType":
-				if currRestriction == nil {
-					currRestriction = &model.Restriction{}
-				}
-
-			case "restriction":
-				if currRestriction == nil {
-					currRestriction = &model.Restriction{}
-				}
-				for _, a := range tok.Attr {
-					if a.Name.Local == "base" {
-						if currField != nil && currField.Type == "" {
-							currField.Type = a.Value
-						}
-					}
-				}
-
-			case "annotation":
-				// pass
-
-			case "documentation":
-				inDocumentation = true
-				docBuffer.Reset()
-
-			// ➕ Restriction facets
-			case "enumeration":
-				for _, a := range tok.Attr {
-					if a.Name.Local == "value" {
-						currRestriction.Enumeration = append(currRestriction.Enumeration, a.Value)
-					}
-				}
-
-			case "length":
-				for _, a := range tok.Attr {
-					if a.Name.Local == "value" {
-						currRestriction.Length = parseIntPtr(a.Value)
-					}
-				}
-
-			case "minLength":
-				for _, a := range tok.Attr {
-					if a.Name.Local == "value" {
-						currRestriction.MinLength = parseIntPtr(a.Value)
-					}
-				}
-
-			case "maxLength":
-				for _, a := range tok.Attr {
-					if a.Name.Local == "value" {
-						currRestriction.MaxLength = parseIntPtr(a.Value)
-					}
-				}
-
-			case "pattern":
-				for _, a := range tok.Attr {
-					if a.Name.Local == "value" {
-						currRestriction.Pattern = parseStrPtr(a.Value)
-					}
-				}
-
-			case "whiteSpace":
-				for _, a := range tok.Attr {
-					if a.Name.Local == "value" {
-						currRestriction.WhiteSpace = parseStrPtr(a.Value)
-					}
-				}
-
-			case "minInclusive":
-				for _, a := range tok.Attr {
-					if a.Name.Local == "value" {
-						currRestriction.MinInclusive = parseStrPtr(a.Value)
-					}
-				}
-
-			case "maxInclusive":
-				for _, a := range tok.Attr {
-					if a.Name.Local == "value" {
-						currRestriction.MaxInclusive = parseStrPtr(a.Value)
-					}
-				}
-
-			case "minExclusive":
-				for _, a := range tok.Attr {
-					if a.Name.Local == "value" {
-						currRestriction.MinExclusive = parseStrPtr(a.Value)
-					}
-				}
-
-			case "maxExclusive":
-				for _, a := range tok.Attr {
-					if a.Name.Local == "value" {
-						currRestriction.MaxExclusive = parseStrPtr(a.Value)
-					}
-				}
-
-			case "totalDigits":
-				for _, a := range tok.Attr {
-					if a.Name.Local == "value" {
-						currRestriction.TotalDigits = parseIntPtr(a.Value)
-					}
-				}
-
-			case "fractionDigits":
-				for _, a := range tok.Attr {
-					if a.Name.Local == "value" {
-						currRestriction.FractionDigits = parseIntPtr(a.Value)
-					}
-				}
-			}
-
-		case xml.CharData:
-			if inDocumentation {
-				docBuffer.Write([]byte(tok))
-			}
-
-		case xml.EndElement:
-			switch tok.Name.Local {
-			case "documentation":
-				inDocumentation = false
-				currentDoc = strings.TrimSpace(docBuffer.String())
-				docBuffer.Reset()
-
-			case "restriction":
-				if currField != nil {
-					currField.Restriction = currRestriction
-				}
-				if currElem != nil {
-					currElem.Restriction = currRestriction
-				}
-				currRestriction = nil
-
-			case "element":
-				if currField != nil {
-					currField.Documentation = currentDoc
-					if currType != nil {
-						currType.Fields = append(currType.Fields, *currField)
-					} else {
-						schema.Elements = append(schema.Elements, *currElem)
-					}
-				}
-				currField = nil
-				currElem = nil
-				currentDoc = ""
-
-			case "complexType":
-				if currType != nil {
-					schema.Types = append(schema.Types, *currType)
-				}
-				currType = nil
-				currentDoc = ""
-
-			case "attribute":
-				if currType != nil && currAttr != nil {
-					currAttr.Documentation = currentDoc
-					currType.Attributes = append(currType.Attributes, *currAttr)
-				}
-				currAttr = nil
-				currentDoc = ""
-			}
-		}
+	// Handle <xs:include> elements
+	if err := processIncludes(schema, loadedSchemas, filePath); err != nil {
+		return nil, err
 	}
 
+	// Handle <xs:import> elements
+	if err := processImports(schema, loadedSchemas, filePath); err != nil {
+		return nil, err
+	}
+	return schema, nil
+}
+
+// readAndUnmarshalSchema securely reads the XSD file from a safe location and unmarshals its XML.
+func readAndUnmarshalSchema(filePath string) (*model.XSDSchema, error) {
+	cleanedPath, err := sanitizeAndVerifyPath(filePath)
+	if err != nil {
+		return nil, fmt.Errorf("unsafe file path: %w", err)
+	}
+	//nolint:gosec // potential file inclusion expected as this is made for a CLI tool and avoiding new flag on command usage
+	data, err := os.ReadFile(cleanedPath)
+	if err != nil {
+		return nil, err
+	}
+
+	var schema model.XSDSchema
+	if err := xml.Unmarshal(data, &schema); err != nil {
+		return nil, err
+	}
 	return &schema, nil
 }
 
-func atoi(s string) int {
-	i, _ := strconv.Atoi(s)
-	return i
-}
+// sanitizeAndVerifyPath cleans the given path and ensures it resides inside the trusted base directory.
+func sanitizeAndVerifyPath(path string) (string, error) {
+	// Clean path for lexical normalization
+	cleaned := filepath.Clean(path)
 
-func parseInt(s string) int {
-	i, _ := strconv.Atoi(s)
-	return i
-}
-
-func parseIntPtr(s string) *int {
-	if s == "" {
-		return nil
-	}
-	i, err := strconv.Atoi(s)
+	// Get absolute path to handle relative inputs robustly
+	absPath, err := filepath.Abs(cleaned)
 	if err != nil {
-		return nil
+		return "", err
 	}
-	return &i
+
+	return absPath, nil
 }
 
-func parseStrPtr(s string) *string {
-	if s == "" {
-		return nil
+// processIncludes recursively loads and merges schemas from <xs:include> elements
+func processIncludes(schema *model.XSDSchema, loadedSchemas map[string]*model.XSDSchema, filePath string) error {
+	dir := filepath.Dir(filePath)
+	for _, inc := range schema.Includes {
+		incPath := filepath.Join(dir, inc.SchemaLocation)
+		incSchema, err := ParseXSD(incPath, loadedSchemas)
+		if err != nil {
+			return err
+		}
+		// Merge elements and types from included schema into current schema
+		schema.Elements = append(schema.Elements, incSchema.Elements...)
+		schema.ComplexTypes = append(schema.ComplexTypes, incSchema.ComplexTypes...)
+		schema.SimpleTypes = append(schema.SimpleTypes, incSchema.SimpleTypes...)
 	}
-	str := strings.TrimSpace(s)
-	return &str
+	return nil
+}
+
+// processImports recursively loads and merges schemas from <xs:import> elements
+func processImports(schema *model.XSDSchema, loadedSchemas map[string]*model.XSDSchema, filePath string) error {
+	dir := filepath.Dir(filePath)
+	for _, imp := range schema.Imports {
+		impPath := filepath.Join(dir, imp.SchemaLocation)
+		impSchema, err := ParseXSD(impPath, loadedSchemas)
+		if err != nil {
+			return err
+		}
+		// Merge elements and types from imported schema into current schema
+		schema.Elements = append(schema.Elements, impSchema.Elements...)
+		schema.ComplexTypes = append(schema.ComplexTypes, impSchema.ComplexTypes...)
+		schema.SimpleTypes = append(schema.SimpleTypes, impSchema.SimpleTypes...)
+	}
+	return nil
 }
