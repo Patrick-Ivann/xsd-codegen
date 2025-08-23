@@ -2,7 +2,6 @@ package helpers_test
 
 import (
 	"fmt"
-	"math/rand"
 	"strings"
 	"testing"
 	"time"
@@ -10,10 +9,6 @@ import (
 	"github.com/Patrick-Ivann/xsd-codegen/pkg/helpers"
 	"github.com/Patrick-Ivann/xsd-codegen/pkg/model"
 )
-
-func init() {
-	rand.Seed(42) // deterministic for tests
-}
 
 func TestNormalizeType(t *testing.T) {
 	cases := map[string]string{
