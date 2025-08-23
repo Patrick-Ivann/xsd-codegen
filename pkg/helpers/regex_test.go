@@ -83,7 +83,7 @@ func TestXeger_GenerateAnyCharZeroOrOne(t *testing.T) {
 		t.Fatal(err)
 	}
 	val := x.Generate()
-	if len(val) != 1 && len(val) != 0 {
+	if len(val) != 1 && val != "" {
 		fmt.Printf("val: %v\n", len(val))
 		t.Errorf("Expected zero or one character, got %d", len(val))
 	}

@@ -11,59 +11,65 @@ import (
 // GenerateElement creates an XML element (etree.Element) based on the provided XSD schema definition.
 // It evaluates whether the element is of a simple type, complex type, reference, or inline definition.
 // gen is used as a value generator for populating element content.
-func GenerateElement(schema *model.XSDSchema, element model.XSDElement, gen helpers.ValueGenerator) *etree.Element {
-	// Create a new XML element with the given element name from the schema
+func GenerateElement(schema *model.XSDSchema, element *model.XSDElement, gen helpers.ValueGenerator) *etree.Element {
 	elem := etree.NewElement(element.Name)
 
-	// Handle explicitly defined types
-	if element.Type != "" {
-		// Case: type refers to a schema-defined type (tns: prefix indicates "this namespace")
-		if strings.HasPrefix(element.Type, "tns:") {
-			typeName := strings.TrimPrefix(element.Type, "tns:")
-
-			// Look for a complex type with that name in the schema
-			for _, ct := range schema.ComplexTypes {
-				if ct.Name == typeName {
-					// Append content for the complex type
-					appendComplexContent(schema, elem, ct, gen)
-					return elem
-				}
-			}
-
-			// Look for a simple type with that name in the schema
-			for _, st := range schema.SimpleTypes {
-				if st.Name == typeName {
-					// Generate a value for this type restriction (like enumeration, pattern, etc.)
-					elem.SetText(helpers.GenerateValue(st.Restriction.Base, st.Restriction))
-					return elem
-				}
-			}
-		} else {
-			// Case: type is a built-in primitive type (e.g., xs:string, xs:int, etc.)
-			elem.SetText(helpers.GenerateValue(element.Type, nil))
-		}
-
-	} else if element.ComplexType != nil {
-		// Inline-defined complex type
+	switch {
+	case element.Type != "":
+		handleType(schema, elem, element, gen)
+	case element.ComplexType != nil:
 		appendComplexContent(schema, elem, *element.ComplexType, gen)
-
-	} else if element.SimpleType != nil {
-		// Inline-defined simple type
+	case element.SimpleType != nil:
 		elem.SetText(helpers.GenerateValue(element.SimpleType.Restriction.Base, element.SimpleType.Restriction))
-
-	} else if element.Ref != "" {
-		// Case: this element is a reference to another schema element
-		refName := strings.Split(element.Ref, ":")[1] // Extract referenced element name
-		for _, el := range schema.Elements {
-			if el.Name == refName {
-				// Generate the referenced element recursively
-				refElem := GenerateElement(schema, el, gen)
-				elem = refElem
-			}
-		}
+	case element.Ref != "":
+		elem = handleRef(schema, element.Ref, gen)
 	}
 
 	return elem
+}
+
+func handleType(schema *model.XSDSchema, elem *etree.Element, element *model.XSDElement, gen helpers.ValueGenerator) {
+	if strings.HasPrefix(element.Type, "tns:") {
+		typeName := strings.TrimPrefix(element.Type, "tns:")
+		if tryAppendComplexType(schema, elem, typeName, gen) {
+			return
+		}
+		if trySetSimpleType(schema, elem, typeName) {
+			return
+		}
+	} else {
+		elem.SetText(helpers.GenerateValue(element.Type, nil))
+	}
+}
+
+func tryAppendComplexType(schema *model.XSDSchema, elem *etree.Element, typeName string, gen helpers.ValueGenerator) bool {
+	for _, ct := range schema.ComplexTypes {
+		if ct.Name == typeName {
+			appendComplexContent(schema, elem, ct, gen)
+			return true
+		}
+	}
+	return false
+}
+
+func trySetSimpleType(schema *model.XSDSchema, elem *etree.Element, typeName string) bool {
+	for _, st := range schema.SimpleTypes {
+		if st.Name == typeName {
+			elem.SetText(helpers.GenerateValue(st.Restriction.Base, st.Restriction))
+			return true
+		}
+	}
+	return false
+}
+
+func handleRef(schema *model.XSDSchema, ref string, gen helpers.ValueGenerator) *etree.Element {
+	refName := strings.Split(ref, ":")[1]
+	for _, el := range schema.Elements {
+		if el.Name == refName {
+			return GenerateElement(schema, &el, gen)
+		}
+	}
+	return nil
 }
 
 // appendComplexContent populates a complexType into the target XML element.
@@ -80,7 +86,7 @@ func appendComplexContent(schema *model.XSDSchema, elem *etree.Element, ct model
 			count := helpers.RandomBetween(minOccurs, maxOccurs)
 			for i := 0; i < count; i++ {
 				// Recursively generate child elements
-				childXML := GenerateElement(schema, child, gen)
+				childXML := GenerateElement(schema, &child, gen)
 				elem.AddChild(childXML)
 			}
 		}
@@ -90,7 +96,7 @@ func appendComplexContent(schema *model.XSDSchema, elem *etree.Element, ct model
 	if ct.Choice != nil && len(ct.Choice.Elements) > 0 {
 		// Randomly pick one child element from the choice
 		choice := ct.Choice.Elements[helpers.RandomBetween(0, len(ct.Choice.Elements)-1)]
-		elem.AddChild(GenerateElement(schema, choice, gen))
+		elem.AddChild(GenerateElement(schema, &choice, gen))
 	}
 
 	// Handle attributes defined in the complex type

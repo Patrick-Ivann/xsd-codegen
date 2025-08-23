@@ -1,8 +1,9 @@
 package helpers
 
 import (
+	"crypto/rand"
 	"fmt"
-	"math/rand"
+	"math/big"
 	"strconv"
 	"strings"
 	"time"
@@ -41,79 +42,141 @@ func EscapeQuotes(s string) string {
 }
 
 // GenerateValue returns a sample value for a given XSD type and restriction.
-// This function handles enumerations, patterns, and type-specific value generation.
+// It handles enumerations, patterns, and type-specific value generation.
 func GenerateValue(xsdType string, restriction *model.XSDRestriction) string {
-	// If there are enumerations, pick one at random.
+	// Handle enumerations if present
 	if restriction != nil && len(restriction.Enumerations) > 0 {
-		return restriction.Enumerations[rand.Intn(len(restriction.Enumerations))].Value
+		return pickRandomEnumeration(restriction)
 	}
 
+	// Dispatch based on the XSD type
 	switch xsdType {
 	case "xsd:string":
-		if restriction != nil && restriction.Pattern != nil {
-			return generateStringFromPattern(restriction.Pattern.Value)
-		}
-		return RandomString(rand.Intn(10) + defaultStringLength)
-
+		return generateStringValue(restriction)
 	case "xsd:decimal", "xsd:double", "xsd:float":
-		return strconv.FormatFloat(RandomFloat(-1e6, 1e6), 'f', 6, 64)
-
+		return generateFloatValue()
 	case "xsd:positiveInteger", "xsd:nonNegativeInteger":
-		return strconv.Itoa(randomIntFromRestriction(restriction, defaultMinInt, defaultMaxInt))
-
+		return generatePositiveIntegerValue(restriction)
 	case "xsd:integer", "xsd:int", "xsd:long", "xsd:short", "xsd:byte":
-		return strconv.Itoa(RandomInt(-10000, 10000))
-
+		return generateIntegerValue()
 	case "xsd:NMTOKEN":
 		return RandomIdentifier()
-
 	case "xsd:date":
 		return RandomDate()
-
 	case "xsd:time":
 		return RandomTime()
-
 	case "xsd:dateTime":
 		return randomDateTime()
-
 	case "xsd:duration":
 		return randomDuration()
-
 	case "xsd:boolean":
-		return []string{"true", "false"}[rand.Intn(2)]
-
+		return randomBoolean()
 	default:
-		if restriction != nil {
-			if restriction.Pattern != nil {
-				return generateStringFromPattern(restriction.Pattern.Value)
-			}
-			if restriction.MinIncl != nil && restriction.MaxExcl != nil {
-				min, _ := strconv.Atoi(restriction.MinIncl.Value)
-				max, _ := strconv.Atoi(restriction.MaxExcl.Value)
-				return strconv.Itoa(RandomInt(min, max-defaultMinInt))
-			}
-		}
-		return "default"
+		return generateDefaultValue(restriction)
 	}
+}
+
+func secureIntn(n int) int {
+	if n <= 0 {
+		return 0
+	}
+	bn := big.NewInt(int64(n))
+	r, err := rand.Int(rand.Reader, bn)
+	if err != nil {
+		return 0
+	}
+	return int(r.Int64())
+}
+
+func secureIntBetween(minVal, maxVal int) int {
+	if minVal >= maxVal {
+		return minVal
+	}
+	return secureIntn(maxVal-minVal+1) + minVal
+}
+
+func secureFloatBetween(minVal, maxVal float64) float64 {
+	r, err := rand.Int(rand.Reader, big.NewInt(1e9))
+	if err != nil {
+		return minVal
+	}
+	f := float64(r.Int64()) / 1e9
+	return minVal + f*(maxVal-minVal)
+}
+
+// pickRandomEnumeration selects a random value from enumeration restrictions.
+func pickRandomEnumeration(restriction *model.XSDRestriction) string {
+	return restriction.Enumerations[secureIntn(len(restriction.Enumerations))].Value
+}
+
+// generateStringValue generates a string value, using pattern if present.
+func generateStringValue(restriction *model.XSDRestriction) string {
+	if restriction != nil && restriction.Pattern != nil {
+		return generateStringFromPattern(restriction.Pattern.Value)
+	}
+	return RandomString(secureIntn(10) + defaultStringLength)
+}
+
+// generateFloatValue generates a random floating point number as a string.
+func generateFloatValue() string {
+	return strconv.FormatFloat(RandomFloat(-1e6, 1e6), 'f', 6, 64)
+}
+
+// generatePositiveIntegerValue generates a positive integer value considering restrictions.
+func generatePositiveIntegerValue(restriction *model.XSDRestriction) string {
+	return strconv.Itoa(randomIntFromRestriction(restriction, defaultMinInt, defaultMaxInt))
+}
+
+// generateIntegerValue generates an integer value in a fixed range.
+func generateIntegerValue() string {
+	return strconv.Itoa(RandomInt(-10000, 10000))
+}
+
+// randomBoolean randomly returns "true" or "false".
+func randomBoolean() string {
+	n, err := rand.Int(rand.Reader, big.NewInt(2))
+	if err != nil {
+		// fallback or panic if crypto/rand fails, depending on your error policy
+		panic("crypto/rand failed: " + err.Error())
+	}
+	if n.Int64() == 0 {
+		return "false"
+	}
+	return "true"
+}
+
+// generateDefaultValue generates a default value when no specific type matched.
+func generateDefaultValue(restriction *model.XSDRestriction) string {
+	if restriction != nil {
+		if restriction.Pattern != nil {
+			return generateStringFromPattern(restriction.Pattern.Value)
+		}
+		if restriction.MinIncl != nil && restriction.MaxExcl != nil {
+			minVal, _ := strconv.Atoi(restriction.MinIncl.Value)
+			maxVal, _ := strconv.Atoi(restriction.MaxExcl.Value)
+			return strconv.Itoa(RandomInt(minVal, maxVal-defaultMinInt))
+		}
+	}
+	return "default"
 }
 
 // randomIntFromRestriction returns a random integer within the given restriction bounds.
 // If no restriction is provided, it uses the provided default values.
 func randomIntFromRestriction(r *model.XSDRestriction, defMin, defMax int) int {
-	min, max := defMin, defMax
+	minVal, maxVal := defMin, defMax
 	if r != nil {
 		if r.MinIncl != nil {
 			if v, err := strconv.Atoi(r.MinIncl.Value); err == nil {
-				min = v
+				minVal = v
 			}
 		}
 		if r.MaxExcl != nil {
 			if v, err := strconv.Atoi(r.MaxExcl.Value); err == nil {
-				max = v
+				maxVal = v
 			}
 		}
 	}
-	return RandomInt(min, max)
+	return RandomInt(minVal, maxVal)
 }
 
 // generateStringFromPattern generates a string that matches the given regex pattern.
@@ -132,7 +195,7 @@ func RandomString(length int) string {
 	const chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 	var sb strings.Builder
 	for i := 0; i < length; i++ {
-		sb.WriteByte(chars[rand.Intn(len(chars))])
+		sb.WriteByte(chars[secureIntn(len(chars))])
 	}
 	return sb.String()
 }
@@ -143,24 +206,21 @@ func RandomIdentifier() string {
 	const start = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
 	const rest = start + "0123456789_-."
 	var sb strings.Builder
-	sb.WriteByte(start[rand.Intn(len(start))])
-	for i := 0; i < rand.Intn(8)+2; i++ {
-		sb.WriteByte(rest[rand.Intn(len(rest))])
+	sb.WriteByte(start[secureIntn(len(start))])
+	for i := 0; i < secureIntn(8)+2; i++ {
+		sb.WriteByte(rest[secureIntn(len(rest))])
 	}
 	return sb.String()
 }
 
 // RandomFloat generates a random float64 between min and max.
-func RandomFloat(min, max float64) float64 {
-	return min + rand.Float64()*(max-min)
+func RandomFloat(minVal, maxVal float64) float64 {
+	return secureFloatBetween(minVal, maxVal)
 }
 
 // RandomInt generates a random integer between min and max, inclusive.
-func RandomInt(min, max int) int {
-	if min >= max {
-		return min
-	}
-	return rand.Intn(max-min+defaultMinInt) + min
+func RandomInt(minVal, maxVal int) int {
+	return secureIntBetween(minVal, maxVal)
 }
 
 // RandomDate generates a random date string in YYYY-MM-DD format.
@@ -168,13 +228,14 @@ func RandomDate() string {
 	start := time.Date(1980, 1, 1, 0, 0, 0, 0, time.UTC)
 	end := time.Date(2030, 12, 31, 0, 0, 0, 0, time.UTC)
 	delta := end.Sub(start)
-	randomTime := start.Add(time.Duration(rand.Int63n(int64(delta))))
+	seconds := secureIntn(int(delta.Seconds()))
+	randomTime := start.Add(time.Duration(seconds) * time.Second)
 	return randomTime.Format("2006-01-02")
 }
 
 // RandomTime generates a random time string in HH:MM:SS format.
 func RandomTime() string {
-	return fmtTime(rand.Intn(24), rand.Intn(60), rand.Intn(60))
+	return fmtTime(secureIntn(24), secureIntn(60), secureIntn(60))
 }
 
 // fmtTime formats hours, minutes, and seconds into a time string.
@@ -190,8 +251,8 @@ func randomDateTime() string {
 // randomDuration generates a random duration string in ISO 8601 format.
 func randomDuration() string {
 	return fmt.Sprintf("P%dY%dM%dDT%dH%dM%dS",
-		rand.Intn(10), rand.Intn(12), rand.Intn(28),
-		rand.Intn(24), rand.Intn(60), rand.Intn(60))
+		secureIntn(10), secureIntn(12), secureIntn(28),
+		secureIntn(24), secureIntn(60), secureIntn(60))
 }
 
 // ParseOccurs parses an XSD occurrence value into an integer.
@@ -203,7 +264,7 @@ func ParseOccurs(val string, defaultVal int) int {
 	case "":
 		return defaultVal
 	case "unbounded":
-		return rand.Intn(3) + 1
+		return secureIntn(3) + 1
 	default:
 		i, err := strconv.Atoi(val)
 		if err != nil {
@@ -215,9 +276,9 @@ func ParseOccurs(val string, defaultVal int) int {
 
 // RandomBetween returns a random integer between min and max, inclusive.
 // If min >= max, it returns min.
-func RandomBetween(min, max int) int {
-	if min >= max {
-		return min
+func RandomBetween(minVal, maxVal int) int {
+	if minVal >= maxVal {
+		return minVal
 	}
-	return rand.Intn(max-min+1) + min
+	return secureIntn(maxVal-minVal+1) + minVal
 }

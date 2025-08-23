@@ -1,9 +1,9 @@
 package helpers
 
 import (
-	"math/rand"
+	"crypto/rand"
+	"math/big"
 	"regexp/syntax"
-	"time"
 )
 
 const (
@@ -11,8 +11,6 @@ const (
 	printable      = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ !\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~\t\v\f\r\n"
 	printableNotNL = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ !\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~\t\v\f\r"
 )
-
-var rng = rand.New(rand.NewSource(time.Now().UnixNano()))
 
 type Xeger struct {
 	re *syntax.Regexp
@@ -62,12 +60,12 @@ func (x *Xeger) gen(re *syntax.Regexp) string {
 		return x.genSub(re, randInt(2))
 	case syntax.OpRepeat:
 		// Handles explicit repetition: {min,max}
-		max := re.Max
-		if max < 0 { // No explicit max: use a global limit
-			max = limit
+		maxVal := re.Max
+		if maxVal < 0 { // No explicit max: use a global limit
+			maxVal = limit
 		}
 		// Generate between Min and Max repetitions randomly
-		return x.genSub(re, randInt(max-re.Min+1)+re.Min)
+		return x.genSub(re, randInt(maxVal-re.Min+1)+re.Min)
 	case syntax.OpAlternate:
 		// Handles alternation (a|b): randomly pick one of the subexpressions
 		return x.gen(re.Sub[randInt(len(re.Sub))])
@@ -109,11 +107,16 @@ func (x *Xeger) genSub(re *syntax.Regexp, count int) string {
 	return string(out)
 }
 
-// randInt returns a uniform random integer in [0, n).
-// Returns 0 if n <= 0 to avoid panics or negative indexes.
+// randInt returns a cryptographically secure uniform random integer in [0, n).
+// Returns 0 if n <= 0 to avoid errors.
 func randInt(n int) int {
 	if n <= 0 {
 		return 0
 	}
-	return rng.Intn(n)
+	val, err := rand.Int(rand.Reader, big.NewInt(int64(n)))
+	if err != nil {
+		// handle error, here fallback to zero or panic if appropriate
+		return 0
+	}
+	return int(val.Int64())
 }
