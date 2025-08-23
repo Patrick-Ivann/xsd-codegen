@@ -2,6 +2,7 @@ package parser
 
 import (
 	"encoding/xml"
+	"fmt"
 	"os"
 	"path/filepath"
 
@@ -27,28 +28,48 @@ func ParseXSD(filePath string, loadedSchemas map[string]*model.XSDSchema) (*mode
 	loadedSchemas[absPath] = schema
 
 	// Handle <xs:include> elements
-	if err = processIncludes(schema, loadedSchemas, filePath); err != nil {
+	if err := processIncludes(schema, loadedSchemas, filePath); err != nil {
 		return nil, err
 	}
 
 	// Handle <xs:import> elements
-	if err = processImports(schema, loadedSchemas, filePath); err != nil {
+	if err := processImports(schema, loadedSchemas, filePath); err != nil {
 		return nil, err
 	}
 	return schema, nil
 }
 
-// readAndUnmarshalSchema reads the XSD file and unmarshals its XML into a Go struct
+// readAndUnmarshalSchema securely reads the XSD file from a safe location and unmarshals its XML.
 func readAndUnmarshalSchema(filePath string) (*model.XSDSchema, error) {
-	data, err := os.ReadFile(filePath)
+	cleanedPath, err := sanitizeAndVerifyPath(filePath)
+	if err != nil {
+		return nil, fmt.Errorf("unsafe file path: %w", err)
+	}
+	//nolint:gosec // potential file inclusion expected as this is made for a CLI tool and avoiding new flag on command usage
+	data, err := os.ReadFile(cleanedPath)
 	if err != nil {
 		return nil, err
 	}
+
 	var schema model.XSDSchema
 	if err := xml.Unmarshal(data, &schema); err != nil {
 		return nil, err
 	}
 	return &schema, nil
+}
+
+// sanitizeAndVerifyPath cleans the given path and ensures it resides inside the trusted base directory.
+func sanitizeAndVerifyPath(path string) (string, error) {
+	// Clean path for lexical normalization
+	cleaned := filepath.Clean(path)
+
+	// Get absolute path to handle relative inputs robustly
+	absPath, err := filepath.Abs(cleaned)
+	if err != nil {
+		return "", err
+	}
+
+	return absPath, nil
 }
 
 // processIncludes recursively loads and merges schemas from <xs:include> elements

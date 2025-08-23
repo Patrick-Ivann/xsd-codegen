@@ -1,0 +1,4 @@
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+  <xs:import namespace="http://example.com/imported" schemaLocation="imported.xsd"/>
+  <xs:element name="importedRoot" type="importedType"/>
+</xs:schema>
