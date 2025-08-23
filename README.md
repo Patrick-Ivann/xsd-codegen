@@ -23,12 +23,12 @@ go build ./cmd/xsd-codegen
 
 ## 📦 Usage
 ```bash
-./xsd-codegen path/to/schema.xsd
+./xsd-codegen -xsd complete.xsd -out example.xml
 ```
 Parses the given .xsd
 
 Resolves all nested imports/includes
 
-Generates Go structs and sample XML output
+Generates sample XML output
 
 Generated outputs can be customized or piped into files depending on your CLI extension.
